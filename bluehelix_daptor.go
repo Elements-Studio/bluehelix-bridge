@@ -4,6 +4,7 @@ import (
 	"github.com/bluehelix-chain/chainnode/proto"
 )
 
+// StarcoinAdaptor use account model,only need to implements account related function,utxo function is not necessary
 type StarcoinAdaptor struct {
 }
 
