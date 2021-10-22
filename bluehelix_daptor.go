@@ -273,9 +273,18 @@ func (adaptor *StarcoinAdaptor) CreateAccountSignedTransaction(req *proto.Create
 		}, errors.WithStack(err)
 	}
 
+	hash, err := stc.GetSignedUserTransactionHash(signedUserTxn)
+	if err != nil {
+		return &proto.CreateSignedTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "get signedtxn hash failed",
+		}, errors.WithStack(err)
+	}
+
 	return &proto.CreateSignedTransactionReply{
 		Code:         proto.ReturnCode_SUCCESS,
 		SignedTxData: signedTxn,
+		Hash:         hash,
 	}, nil
 }
 
@@ -292,7 +301,7 @@ func (adaptor *StarcoinAdaptor) QueryAccountTransactionFromData(req *proto.Query
 }
 
 func (adaptor *StarcoinAdaptor) QueryAccountTransactionFromSignedData(req *proto.QueryTransactionFromSignedDataRequest) (*proto.QueryAccountTransactionReply, error) {
-	_, err := types.BcsDeserializeSignedUserTransaction(req.SignedTxData)
+	signedTxn, err := types.BcsDeserializeSignedUserTransaction(req.SignedTxData)
 	if err != nil {
 		return &proto.QueryAccountTransactionReply{
 			Code: proto.ReturnCode_ERROR,
@@ -300,7 +309,23 @@ func (adaptor *StarcoinAdaptor) QueryAccountTransactionFromSignedData(req *proto
 		}, errors.WithStack(err)
 	}
 
-	return nil, nil
+	txnHash, err := stc.GetSignedUserTransactionHash(signedTxn)
+	if err != nil {
+		return &proto.QueryAccountTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "get txn hash from signed user txn failed",
+		}, errors.WithStack(err)
+	}
+
+	url, err := findNetwork(req.Chain)
+	if err != nil {
+		return &proto.QueryAccountTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "can't find network",
+		}, errors.WithStack(err)
+	}
+
+	return adaptor.QueryAccountTransactionByHash(url, hex.EncodeToString(txnHash))
 }
 
 func (adaptor *StarcoinAdaptor) QueryUtxoTransactionFromData(req *proto.QueryTransactionFromDataRequest) (*proto.QueryUtxoTransactionReply, error) {
@@ -356,8 +381,12 @@ func (adaptor *StarcoinAdaptor) QueryAccountTransaction(req *proto.QueryTransact
 		}, errors.WithStack(err)
 	}
 
+	return adaptor.QueryAccountTransactionByHash(url, req.TxHash)
+}
+
+func (adaptor *StarcoinAdaptor) QueryAccountTransactionByHash(url, hash string) (*proto.QueryAccountTransactionReply, error) {
 	client := stc.NewStarcoinClient(url)
-	txn, err := client.GetTransactionByHash(req.TxHash)
+	txn, err := client.GetTransactionByHash(hash)
 	if err != nil {
 		return &proto.QueryAccountTransactionReply{
 			Code: proto.ReturnCode_ERROR,
@@ -401,6 +430,7 @@ func (adaptor *StarcoinAdaptor) QueryAccountTransaction(req *proto.QueryTransact
 		BlockTime:   uint64(txn.BlockMetadata.Timestamp),
 		SignHash:    sign,
 	}, nil
+
 }
 
 func (adaptor *StarcoinAdaptor) VerifyAccountSignedTransaction(req *proto.VerifySignedTransactionRequest) (*proto.VerifySignedTransactionReply, error) {
