@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/bluehelix-chain/chainnode/proto"
+	"github.com/novifinancial/serde-reflection/serde-generate/runtime/golang/serde"
 
 	"github.com/pkg/errors"
 
@@ -418,11 +419,90 @@ func (adaptor *StarcoinAdaptor) QueryAccountTransactionByHash(url, hash string) 
 		}, errors.WithStack(err)
 	}
 
+	payload, err := decodePayload(txn.UserTransaction.RawTransaction.Payload)
+	if err != nil {
+		return &proto.QueryAccountTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "decode payload failed",
+		}, errors.WithStack(err)
+	}
+
+	payloadScriptFunction, ok := payload.(*types.TransactionPayload__ScriptFunction)
+	if !ok {
+		return &proto.QueryAccountTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "payload should be scriptfunction",
+		}, fmt.Errorf("payload should be scriptfunction")
+	}
+
+	address := stc.ToAccountAddress("0x00000000000000000000000000000001")
+	if address != payloadScriptFunction.Value.Module.Address {
+		return &proto.QueryAccountTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "module address should be 0x00000000000000000000000000000001",
+		}, fmt.Errorf("module address should be 0x00000000000000000000000000000001")
+	}
+
+	if payloadScriptFunction.Value.Module.Name != "TransferScripts" {
+		return &proto.QueryAccountTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "module name should be TransferScripts",
+		}, fmt.Errorf("module name should be TransferScripts")
+	}
+
+	if payloadScriptFunction.Value.Function != "peer_to_peer" {
+		return &proto.QueryAccountTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "function name should be peer_to_peer",
+		}, fmt.Errorf("function name should be peer_to_pee")
+	}
+	// TODO 是否校验这里的type args是stc
+
+	if len(payloadScriptFunction.Value.Args) != 2 {
+		return &proto.QueryAccountTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "transfer script should have 2 args",
+		}, fmt.Errorf("transfer script should have 2 args")
+	}
+
+	toArgs, err := types.BcsDeserializeTransactionArgument(payloadScriptFunction.Value.Args[0])
+	if err != nil {
+		return &proto.QueryAccountTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "decode args0 failed",
+		}, errors.WithStack(err)
+	}
+
+	toAddress, ok := toArgs.(*types.TransactionArgument__Address)
+	if !ok {
+		return &proto.QueryAccountTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "args0 should be address",
+		}, fmt.Errorf("args0 should be address")
+	}
+
+	amountArgs, err := types.BcsDeserializeTransactionArgument(payloadScriptFunction.Value.Args[1])
+	if err != nil {
+		return &proto.QueryAccountTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "decode args0 failed",
+		}, errors.WithStack(err)
+	}
+
+	amount, ok := amountArgs.(*types.TransactionArgument__U128)
+	if !ok {
+		return &proto.QueryAccountTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "args1 should be u128",
+		}, fmt.Errorf("args1 should be u128")
+	}
+
 	return &proto.QueryAccountTransactionReply{
-		Code:   proto.ReturnCode_SUCCESS,
-		TxHash: txn.TransactionHash,
-		From:   txn.BlockMetadata.Author,
-		//To: txn.UserTransaction.RawTransaction
+		Code:        proto.ReturnCode_SUCCESS,
+		TxHash:      txn.TransactionHash,
+		From:        txn.BlockMetadata.Author,
+		To:          stc.BytesToHexString(toAddress.Value[:]),
+		Amount:      stc.U128ToBigInt((*serde.Uint128)(amount)).String(),
 		Nonce:       uint64(nonce),
 		GasPrice:    txn.UserTransaction.RawTransaction.GasUnitPrice,
 		GasLimit:    txn.UserTransaction.RawTransaction.MaxGasAmount,
@@ -451,4 +531,18 @@ func (adaptor *StarcoinAdaptor) GetAccountTransactionByHeight(height int64, repl
 
 func (adaptor *StarcoinAdaptor) GetUtxoTransactionByHeight(height int64, replyCh chan *proto.QueryUtxoTransactionReply, errCh chan error) {
 	panic("utxo txn is not nesscery function")
+}
+
+func decodePayload(payloadString string) (types.TransactionPayload, error) {
+	payloadBytes, err := stc.HexStringToBytes(payloadString)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	payload, err := types.BcsDeserializeTransactionPayload(payloadBytes)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return payload, nil
 }
