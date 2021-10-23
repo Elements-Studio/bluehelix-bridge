@@ -214,7 +214,22 @@ func (adaptor *StarcoinAdaptor) CreateAccountTransaction(req *proto.CreateAccoun
 		}, errors.WithStack(err)
 	}
 
-	txn, err := client.BuildTransferStcTxn(stc.ToAccountAddress(req.From), stc.ToAccountAddress(req.To), *amount, gasPrice, uint64(gaslimit), req.Nonce)
+	from, err := stc.ToAccountAddress(req.From)
+	if err != nil {
+		return &proto.CreateAccountTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "parse address failed",
+		}, errors.WithStack(err)
+	}
+
+	to, err := stc.ToAccountAddress(req.To)
+	if err != nil {
+		return &proto.CreateAccountTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "parse address failed",
+		}, errors.WithStack(err)
+	}
+	txn, err := client.BuildTransferStcTxn(*from, *to, *amount, gasPrice, uint64(gaslimit), req.Nonce)
 	if err != nil {
 		return &proto.CreateAccountTransactionReply{
 			Code: proto.ReturnCode_ERROR,
@@ -435,8 +450,15 @@ func (adaptor *StarcoinAdaptor) QueryAccountTransactionByHash(url, hash string) 
 		}, fmt.Errorf("payload should be scriptfunction")
 	}
 
-	address := stc.ToAccountAddress("0x00000000000000000000000000000001")
-	if address != payloadScriptFunction.Value.Module.Address {
+	address, err := stc.ToAccountAddress("0x00000000000000000000000000000001")
+	if err != nil {
+		return &proto.QueryAccountTransactionReply{
+			Code: proto.ReturnCode_ERROR,
+			Msg:  "parse address failed",
+		}, errors.WithStack(err)
+	}
+
+	if *address != payloadScriptFunction.Value.Module.Address {
 		return &proto.QueryAccountTransactionReply{
 			Code: proto.ReturnCode_ERROR,
 			Msg:  "module address should be 0x00000000000000000000000000000001",
