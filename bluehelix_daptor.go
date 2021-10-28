@@ -1,6 +1,7 @@
 package bluehelix_bridge
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -97,7 +98,7 @@ func (adaptor *StarcoinAdaptor) QueryBalance(req *proto.QueryBalanceRequest) (*p
 
 	client := stc.NewStarcoinClient(url)
 
-	result, err := client.GetResource(req.Address)
+	result, err := client.GetResource(context.Background(), req.Address)
 	if err != nil {
 		return &proto.QueryBalanceReply{
 			Code: proto.ReturnCode_ERROR,
@@ -129,7 +130,7 @@ func (adaptor *StarcoinAdaptor) QueryNonce(req *proto.QueryNonceRequest) (*proto
 	}
 
 	client := stc.NewStarcoinClient(url)
-	state, err := client.GetState(req.Address)
+	state, err := client.GetState(context.Background(), req.Address)
 	if err != nil {
 		return &proto.QueryNonceReply{
 			Code: proto.ReturnCode_ERROR,
@@ -153,7 +154,7 @@ func (adaptor *StarcoinAdaptor) QueryGasPrice(req *proto.QueryGasPriceRequest) (
 	}
 
 	client := stc.NewStarcoinClient(url)
-	price, err := client.GetGasUnitPrice()
+	price, err := client.GetGasUnitPrice(context.Background())
 	if err != nil {
 		return &proto.QueryGasPriceReply{
 			Code: proto.ReturnCode_ERROR,
@@ -229,7 +230,7 @@ func (adaptor *StarcoinAdaptor) CreateAccountTransaction(req *proto.CreateAccoun
 			Msg:  "parse address failed",
 		}, errors.WithStack(err)
 	}
-	txn, err := client.BuildTransferStcTxn(*from, *to, *amount, gasPrice, uint64(gaslimit), req.Nonce)
+	txn, err := client.BuildTransferStcTxn(context.Background(), *from, *to, *amount, gasPrice, uint64(gaslimit), req.Nonce)
 	if err != nil {
 		return &proto.CreateAccountTransactionReply{
 			Code: proto.ReturnCode_ERROR,
@@ -362,7 +363,7 @@ func (adaptor *StarcoinAdaptor) BroadcastTransaction(req *proto.BroadcastTransac
 	}
 
 	client := stc.NewStarcoinClient(url)
-	state, err := client.SubmitSignedTransactionBytes(req.SignedTxData)
+	state, err := client.SubmitSignedTransactionBytes(context.Background(), req.SignedTxData)
 	if err != nil {
 		return &proto.BroadcastTransactionReply{
 			Code: proto.ReturnCode_ERROR,
@@ -402,7 +403,7 @@ func (adaptor *StarcoinAdaptor) QueryAccountTransaction(req *proto.QueryTransact
 
 func (adaptor *StarcoinAdaptor) QueryAccountTransactionByHash(url, hash string) (*proto.QueryAccountTransactionReply, error) {
 	client := stc.NewStarcoinClient(url)
-	txn, err := client.GetTransactionByHash(hash)
+	txn, err := client.GetTransactionByHash(context.Background(), hash)
 	if err != nil {
 		return &proto.QueryAccountTransactionReply{
 			Code: proto.ReturnCode_ERROR,
@@ -487,13 +488,7 @@ func (adaptor *StarcoinAdaptor) QueryAccountTransactionByHash(url, hash string) 
 		}, fmt.Errorf("transfer script should have 2 args")
 	}
 
-	toArgs, err := types.BcsDeserializeTransactionArgument(payloadScriptFunction.Value.Args[0])
-	if err != nil {
-		return &proto.QueryAccountTransactionReply{
-			Code: proto.ReturnCode_ERROR,
-			Msg:  "decode args0 failed",
-		}, errors.WithStack(err)
-	}
+	toArgs := payloadScriptFunction.Value.Args[0]
 
 	toAddress, ok := toArgs.(*types.TransactionArgument__Address)
 	if !ok {
@@ -503,13 +498,7 @@ func (adaptor *StarcoinAdaptor) QueryAccountTransactionByHash(url, hash string) 
 		}, fmt.Errorf("args0 should be address")
 	}
 
-	amountArgs, err := types.BcsDeserializeTransactionArgument(payloadScriptFunction.Value.Args[1])
-	if err != nil {
-		return &proto.QueryAccountTransactionReply{
-			Code: proto.ReturnCode_ERROR,
-			Msg:  "decode args0 failed",
-		}, errors.WithStack(err)
-	}
+	amountArgs := payloadScriptFunction.Value.Args[1]
 
 	amount, ok := amountArgs.(*types.TransactionArgument__U128)
 	if !ok {

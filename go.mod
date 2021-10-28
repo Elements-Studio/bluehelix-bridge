@@ -5,7 +5,7 @@ go 1.17
 require (
 	github.com/bluehelix-chain/chainnode v0.9.3
 	github.com/pkg/errors v0.9.1
-	github.com/starcoinorg/starcoin-go v0.0.0-20211023120823-65318e8cda5d
+	github.com/starcoinorg/starcoin-go v0.0.0-20211028072335-83d018c03887
 )
 
 require (
